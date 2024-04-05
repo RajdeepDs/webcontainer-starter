@@ -96,6 +96,13 @@ export default function Home() {
     async function initializeWebContainer() {
       if (textareaRef.current) {
         textareaRef.current.value = files["index.js"].file.contents;
+
+        textareaRef.current.addEventListener("input", (e) => {
+          webContainerInstance?.fs.writeFile(
+            "/index.js",
+            textareaRef.current!.value
+          );
+        });
       }
 
       if (!webContainerInstance) return;
@@ -121,12 +128,10 @@ export default function Home() {
       terminalInstanceRef.current = terminal;
       fitAddonRef.current = fitAddon;
 
-      const exitCode = await installDependencies(terminal);
-      if (exitCode !== 0) {
-        throw new Error("Installation failed");
-      }
-
-      startDevServer(terminal);
+      webContainerInstance.on("server-ready", (port, url) => {
+        if (!iframeRef.current) return;
+        iframeRef.current.src = url;
+      });
     }
 
     initializeWebContainer();
