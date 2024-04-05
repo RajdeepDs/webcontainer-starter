@@ -1,67 +1,18 @@
 "use client";
-import { useWebContainer } from "@/components/useWebContainer";
-import { files } from "@/config/projectFiles";
-import { useCallback, useEffect, useRef } from "react";
+import React, { useCallback, useEffect, useRef } from "react";
 import { Terminal } from "xterm";
-import { FitAddon } from "xterm-addon-fit";
 import "xterm/css/xterm.css";
+import { FitAddon } from "xterm-addon-fit";
+import { files } from "@/config/projectFiles";
+import { useWebContainer } from "@/components/useWebContainer";
 
-export default function Home() {
+export default function TerminalPage() {
   const webContainerInstance = useWebContainer();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const terminalRef = useRef<HTMLDivElement>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
   const terminalInstanceRef = useRef<Terminal | null>(null);
-
-  const installDependencies = useCallback(
-    async (terminal: Terminal) => {
-      if (!webContainerInstance) return;
-
-      const installProcess = await webContainerInstance.spawn("npm", [
-        "install",
-      ]);
-
-      installProcess.output.pipeTo(
-        new WritableStream({
-          write(data) {
-            terminal.write(data);
-          },
-        })
-      );
-
-      return installProcess.exit;
-    },
-    [webContainerInstance]
-  );
-
-  const startDevServer = useCallback(
-    async (terminal: Terminal) => {
-      if (!webContainerInstance) return;
-
-      const devServerProcess = await webContainerInstance.spawn("npm", [
-        "run",
-        "start",
-      ]);
-
-      devServerProcess.output.pipeTo(
-        new WritableStream({
-          write(data) {
-            terminal.write(data);
-          },
-        })
-      );
-
-      return new Promise<void>((resolve) => {
-        webContainerInstance.on("server-ready", (port, url) => {
-          if (!iframeRef.current) return;
-          iframeRef.current.src = url;
-          resolve();
-        });
-      });
-    },
-    [webContainerInstance]
-  );
 
   const startShell = useCallback(
     async (terminal: Terminal) => {
@@ -94,13 +45,10 @@ export default function Home() {
 
   useEffect(() => {
     async function initializeWebContainer() {
-      if (textareaRef.current) {
-        textareaRef.current.value = files["index.js"].file.contents;
-      }
-
       if (!webContainerInstance) return;
 
       await webContainerInstance.mount(files);
+
       const terminal = new Terminal();
       const fitAddon = new FitAddon();
       terminal.loadAddon(fitAddon);
@@ -120,17 +68,11 @@ export default function Home() {
 
       terminalInstanceRef.current = terminal;
       fitAddonRef.current = fitAddon;
-
-      const exitCode = await installDependencies(terminal);
-      if (exitCode !== 0) {
-        throw new Error("Installation failed");
-      }
-
-      startDevServer(terminal);
     }
 
     initializeWebContainer();
-  }, [webContainerInstance, installDependencies, startDevServer, startShell]);
+  }, [webContainerInstance, startShell]);
+
   return (
     <div className="h-dvh">
       {webContainerInstance ? (
