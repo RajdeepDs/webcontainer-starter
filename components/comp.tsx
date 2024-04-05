@@ -1,18 +1,68 @@
 "use client";
-import React, { useCallback, useEffect, useRef } from "react";
-import { Terminal } from "xterm";
-import "xterm/css/xterm.css";
-import { FitAddon } from "xterm-addon-fit";
-import { files } from "@/config/projectFiles";
 import { useWebContainer } from "@/components/useWebContainer";
+import { files } from "@/config/projectFiles";
+import { useCallback, useEffect, useRef } from "react";
+import { Terminal } from "xterm";
+import { FitAddon } from "xterm-addon-fit";
+import "xterm/css/xterm.css";
 
-export default function TerminalPage() {
+export default function Home() {
   const webContainerInstance = useWebContainer();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const terminalRef = useRef<HTMLDivElement>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
+
   const terminalInstanceRef = useRef<Terminal | null>(null);
+
+  const installDependencies = useCallback(
+    async (terminal: Terminal) => {
+      if (!webContainerInstance) return;
+
+      const installProcess = await webContainerInstance.spawn("npm", [
+        "install",
+      ]);
+
+      installProcess.output.pipeTo(
+        new WritableStream({
+          write(data) {
+            terminal.write(data);
+          },
+        })
+      );
+
+      return installProcess.exit;
+    },
+    [webContainerInstance]
+  );
+
+  const startDevServer = useCallback(
+    async (terminal: Terminal) => {
+      if (!webContainerInstance) return;
+
+      const devServerProcess = await webContainerInstance.spawn("npm", [
+        "run",
+        "start",
+      ]);
+
+      devServerProcess.output.pipeTo(
+        new WritableStream({
+          write(data) {
+            terminal.write(data);
+          },
+        })
+      );
+
+      return new Promise<void>((resolve) => {
+        webContainerInstance.on("server-ready", (port, url) => {
+          if (!iframeRef.current) return;
+          iframeRef.current.src = url;
+          resolve();
+        });
+      });
+    },
+    [webContainerInstance]
+  );
 
   const startShell = useCallback(
     async (terminal: Terminal) => {
@@ -45,16 +95,25 @@ export default function TerminalPage() {
 
   useEffect(() => {
     async function initializeWebContainer() {
+      if (textareaRef.current) {
+        textareaRef.current.value = files["index.js"].file.contents;
+
+        textareaRef.current.addEventListener("input", (e) => {
+          webContainerInstance?.fs.writeFile(
+            "/index.js",
+            textareaRef.current!.value
+          );
+        });
+      }
+
       if (!webContainerInstance) return;
 
       await webContainerInstance.mount(files);
-
       const terminal = new Terminal();
       const fitAddon = new FitAddon();
       terminal.loadAddon(fitAddon);
       terminal.open(terminalRef.current!);
       fitAddon.fit();
-
       const shellProcess = await startShell(terminal);
       window.addEventListener("resize", () => {
         fitAddon.fit();
@@ -68,11 +127,15 @@ export default function TerminalPage() {
 
       terminalInstanceRef.current = terminal;
       fitAddonRef.current = fitAddon;
+
+      webContainerInstance.on("server-ready", (port, url) => {
+        if (!iframeRef.current) return;
+        iframeRef.current.src = url;
+      });
     }
 
     initializeWebContainer();
-  }, [webContainerInstance, startShell]);
-
+  }, [webContainerInstance, installDependencies, startDevServer, startShell]);
   return (
     <div className="h-dvh">
       {webContainerInstance ? (
